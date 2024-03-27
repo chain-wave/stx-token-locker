@@ -1,0 +1,54 @@
+
+[project]
+name = "liquidity-locker"
+description = ""
+authors = []
+telemetry = true
+cache_dir = "./.cache"
+
+[contracts.locker]
+path = "contracts/locker.clar"
+depends_on = [
+    "vault",
+    "trait-sip-010",
+    "trait-vault",
+    "trait-ownable"
+]
+
+[contracts.vault]
+path = "contracts/vault.clar"
+depends_on = [
+  "trait-vault",
+  "trait-sip-010",
+  "trait-ownable",
+  "trait-semi-fungible"
+]
+
+[contracts.trait-sip-010]
+path = "contracts/traits/trait-sip-010.clar"
+depends_on = []
+
+[contracts.trait-ownable]
+path = "contracts/traits/trait-ownable.clar"
+depends_on = []
+
+[contracts.trait-semi-fungible]
+path = "contracts/traits/trait-semi-fungible.clar"
+depends_on = []
+
+[contracts.trait-vault]
+path = "contracts/traits/trait-vault.clar"
+depends_on = ["trait-sip-010"]
+
+
+[repl.analysis]
+passes = ["check_checker"]
+check_checker = { trusted_sender = false, trusted_caller = false, callee_filter = false }
+
+# Check-checker settings:
+# trusted_sender: if true, inputs are trusted after tx_sender has been checked.
+# trusted_caller: if true, inputs are trusted after contract-caller has been checked.
+# callee_filter: if true, untrusted data may be passed into a private function without a
+# warning, if it gets checked inside. This check will also propagate up to the
+# caller.
+# More informations: https://www.hiro.so/blog/new-safety-checks-in-clarinet
