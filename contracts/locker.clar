@@ -131,7 +131,6 @@
         (secondarytokenfee (var-get secondary-token-fee))
         (sender tx-sender)
         (next-lock-id (var-get lock-nonce))
-        (pool-id u0)
       )
 
       ;; check that user has enought balcne
