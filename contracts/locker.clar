@@ -151,10 +151,12 @@
 
       ;; create token lock record
       (map-set token-lock-map {lock-id: next-lock-id} { lock-block: block-height, amount: amount, initial-amount: amount, unlock-block: unlock-block, lock-owner: sender })
-      (var-set lock-nonce (+ next-lock-id u1))
 
       ;; add lock id
       (try! (add-lock-id next-lock-id pool-id sender))
+
+      ;; update lock nonce
+      (var-set lock-nonce (+ next-lock-id u1))
     )
     (ok true)  
   )
