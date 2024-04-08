@@ -1,5 +1,8 @@
+;; (impl-trait .trait-ownable.ownable-trait)
+;; (impl-trait .trait-vault.vault-trait)
 (use-trait ft-trait .trait-sip-010.sip-010-trait)
 (use-trait sft-trait .trait-semi-fungible.semi-fungible-trait)
+(use-trait flash-loan-trait .trait-flash-loan-user.flash-loan-user-trait)
 
 (define-constant ONE_8 u100000000) ;; 8 decimal places
 
@@ -13,11 +16,20 @@
 
 (define-map approved-contracts principal bool)
 (define-map approved-tokens principal bool)
+(define-map approved-flash-loan-users principal bool)
 
 (define-map reserve principal uint)
+
+(define-data-var flash-loan-fee-rate uint u0)
+
+(define-data-var flash-loan-enabled bool false)
 (define-data-var paused bool false)
 
 ;; read-only calls
+
+(define-read-only (get-flash-loan-enabled)
+  (var-get flash-loan-enabled)
+)
 
 (define-read-only (is-paused)
   (var-get paused)
@@ -25,6 +37,10 @@
 
 (define-read-only (get-contract-owner)
   (ok (var-get contract-owner))
+)
+
+(define-read-only (get-flash-loan-fee-rate)
+  (var-get flash-loan-fee-rate)
 )
 
 (define-read-only (get-reserve (the-token principal))
@@ -40,6 +56,20 @@
 
 ;; governance calls
 
+(define-public (set-flash-loan-enabled (enabled bool))
+  (begin
+    (try! (check-is-owner)) 
+    (ok (var-set flash-loan-enabled enabled))
+  )
+)
+
+(define-public (pause (new-paused bool))
+    (begin 
+        (try! (check-is-owner))
+        (ok (var-set paused new-paused))
+    )
+)
+
 (define-public (set-contract-owner (owner principal))
   (begin
     (try! (check-is-owner)) 
@@ -54,6 +84,13 @@
   )
 )
 
+(define-public (set-approved-flash-loan-user (the-flash-loan-user principal) (approved bool))
+  (begin 
+    (try! (check-is-owner)) 
+    (ok (map-set approved-flash-loan-users the-flash-loan-user approved))
+  )
+)
+
 (define-public (set-approved-token (the-token principal) (approved bool))
   (begin 
     (try! (check-is-owner)) 
@@ -61,13 +98,12 @@
   )
 )
 
-(define-public (pause (new-paused bool))
-    (begin 
-        (try! (check-is-owner))
-        (ok (var-set paused new-paused))
-    )
+(define-public (set-flash-loan-fee-rate (fee uint))
+  (begin 
+    (try! (check-is-owner)) 
+    (ok (var-set flash-loan-fee-rate fee))
+  )
 )
-
 
 ;; priviliged calls
 
@@ -79,11 +115,46 @@
   )
 )
 
+(define-public (transfer-ft-two (token-x-trait <ft-trait>) (dx uint) (token-y-trait <ft-trait>) (dy uint) (recipient principal))
+  (begin 
+    (try! (transfer-ft token-x-trait dx recipient))
+    (transfer-ft token-y-trait dy recipient)
+  )
+)
+
 (define-public (transfer-sft (the-token <sft-trait>) (token-id uint) (amount uint) (recipient principal))
   (begin     
     (asserts! (not (is-paused)) ERR-PAUSED)
     (asserts! (and (or (is-ok (check-is-approved)) (is-ok (check-is-owner))) (is-ok (check-is-approved-token (contract-of the-token)))) ERR-NOT-AUTHORIZED) 
     (as-contract (contract-call? the-token transfer-fixed token-id amount tx-sender recipient))
+  )
+)
+
+(define-public (flash-loan (the-flash-loan-user <flash-loan-trait>) (the-token <ft-trait>) (amount uint) (memo (optional (buff 16))))
+  (begin
+    (asserts! (not (is-paused)) ERR-PAUSED)
+    (asserts! (and (is-ok (check-is-approved-flash-loan-user (contract-of the-flash-loan-user))) (is-ok (check-is-approved-token (contract-of the-token)))) ERR-NOT-AUTHORIZED)
+    (let 
+      (
+        (pre-bal (unwrap! (get-balance the-token) ERR-INVALID-BALANCE))
+        (fee-with-principal (+ ONE_8 (var-get flash-loan-fee-rate)))
+        (amount-with-fee (mul-up amount fee-with-principal))
+        (recipient tx-sender)
+      )
+    
+      ;; make sure current balance > loan amount
+      (asserts! (> pre-bal amount) ERR-INVALID-BALANCE)
+
+      ;; transfer loan to flash-loan-user
+      (as-contract (try! (contract-call? the-token transfer-fixed amount tx-sender recipient none)))
+
+      ;; flash-loan-user executes with loan received
+      (try! (contract-call? the-flash-loan-user execute the-token amount memo))
+
+      ;; return the loan + fee
+      (try! (contract-call? the-token transfer-fixed amount-with-fee tx-sender (as-contract tx-sender) none))
+      (ok amount-with-fee)
+    )
   )
 )
 
@@ -112,6 +183,10 @@
 
 (define-private (check-is-owner)
   (ok (asserts! (is-eq tx-sender (var-get contract-owner)) ERR-NOT-AUTHORIZED))
+)
+
+(define-private (check-is-approved-flash-loan-user (the-flash-loan-user principal))
+  (ok (asserts! (default-to false (map-get? approved-flash-loan-users the-flash-loan-user)) ERR-NOT-AUTHORIZED))
 )
 
 (define-private (check-is-approved-token (flash-loan-token principal))

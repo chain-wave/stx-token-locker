@@ -13,33 +13,62 @@ contract_id = 'SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.token-amm-swap-pool-v1-
 
 [contracts.locker]
 path = 'contracts/locker.clar'
-clarity_version = 2
-epoch = 2.4
-
-[contracts.trait-ownable]
-path = 'contracts/traits/trait-ownable.clar'
-clarity_version = 2
-epoch = 2.4
-
-[contracts.trait-semi-fungible]
-path = 'contracts/traits/trait-semi-fungible.clar'
-clarity_version = 2
-epoch = 2.4
-
-[contracts.trait-sip-010]
-path = 'contracts/traits/trait-sip-010.clar'
-clarity_version = 2
-epoch = 2.4
-
-[contracts.trait-vault]
-path = 'contracts/traits/trait-vault.clar'
+depends_on = [ "trait-ownable", "trait-sip-010" ]
 clarity_version = 2
 epoch = 2.4
 
 [contracts.vault]
 path = 'contracts/vault.clar'
+depends_on = [ "trait-semi-fungible", "trait-sip-010" ]
 clarity_version = 2
 epoch = 2.4
+
+# Test contracts
+[contracts.amm-swap-pool-v1-1]
+path = 'contracts/test-contracts/amm-swap-pool-v1-1.clar'
+depends_on = [ "trait-sip-010" ]
+clarity_version = 2
+epoch = 2.4
+
+[contracts.token-amm-swap-pool-v1-1]
+path = 'contracts/test-contracts/token-amm-swap-pool-v1-1.clar'
+depends_on = [ "trait-sip-010" ]
+clarity_version = 2
+epoch = 2.4
+
+[contracts.alex-vault-v1-1]
+path = 'contracts/test-contracts/alex-vault-v1-1.clar'
+depends_on = [ "trait-sip-010" ]
+clarity_version = 2
+epoch = 2.4
+
+[contracts.goatmeme]
+path = 'contracts/test-contracts/token/goatmeme.clar'
+depends_on = [ "trait-sip-010" ]
+clarity_version = 2
+epoch = 2.4
+
+[contracts.dummy]
+path = 'contracts/test-contracts/token/dummy.clar'
+depends_on = [ "trait-sip-010" ]
+clarity_version = 2
+epoch = 2.4
+
+[contracts.trait-ownable]
+path = 'contracts/traits/trait-ownable.clar'
+depends_on = []
+
+[contracts.trait-semi-fungible]
+path = 'contracts/traits/trait-semi-fungible.clar'
+depends_on = []
+
+[contracts.trait-sip-010]
+path = 'contracts/traits/trait-sip-010.clar'
+depends_on = []
+
+[contracts.trait-flash-loan-user]
+path = "contracts/test-contracts/traits/trait-flash-loan-user.clar"
+depends_on = ["trait-sip-010"]
 
 [repl]
 clarity_wasm_mode = false
