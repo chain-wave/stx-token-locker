@@ -15,6 +15,7 @@
 (define-constant ERR-INVALID-AMOUNT (err u3032))
 (define-constant ERR-INVALID-POOL-TOKEN (err u3050))
 (define-constant ERR-FAILED (err u3060))
+(define-constant ERR-OUT-OF-BOUNDS (err u4000))
 
 ;; null principal place holder
 (define-constant NULL_PRINCIPAL tx-sender)
@@ -35,13 +36,13 @@
         amount: uint,   ;; the amount of tokens still locked (initial minus withdrawals)
         initial-amount: uint, ;; the initial amount
         unlock-block: uint, ;; the date the token can be withdrawn
-        lock-owner: principal ;; the lock owner
+        lock-owner: principal, ;; the lock owner
+        pool-id: uint ;; pool id from amm pool
     }
 )
 
 ;; nonce of token locks
 (define-data-var lock-nonce uint u0)
-
 
 ;; define the locker parameters
 (define-data-var stx-fee uint u1000000) ;; small stacks fee to prevent spams
@@ -54,7 +55,6 @@
 
 
 ;; read-only calls
-
 (define-read-only (get-user-token-locks (user-addr principal) (pool-id uint)) 
   (default-to (list) (map-get? users-token-locks {user-addr: user-addr, pool-id: pool-id}))
 )
@@ -92,11 +92,9 @@
 (define-public (set-fees (stx-fee_ uint) (secondary-token-fee_ uint) (secondary-token-discount_ uint)) 
   (begin 
     (try! (check-is-owner))
-    
     (var-set stx-fee stx-fee_)
     (var-set secondary-token-fee  secondary-token-fee_)
     (var-set secondary-token-discount secondary-token-discount_)
-    
     (ok true)
   )
 )
@@ -106,6 +104,24 @@
     (and 
       (is-none (index-of (get-user-token-locks user-addr pool-id) lock-id))
       (map-set users-token-locks {user-addr: user-addr, pool-id: pool-id} (unwrap! (as-max-len? (append (get-user-token-locks user-addr pool-id) lock-id) u200) ERR-FAILED))
+    )
+    (ok true)
+  )
+)
+
+(define-private (remove-lock-id (index uint) (lock-id uint) (pool-id uint) (user-addr principal))
+  (begin
+    (let (
+          (lock-ids (get-user-token-locks user-addr pool-id))
+          (length (len lock-ids))
+          (last-item (unwrap! (element-at lock-ids (- length u1)) ERR-OUT-OF-BOUNDS))
+          (item-to-remove (unwrap! (element-at lock-ids index) ERR-OUT-OF-BOUNDS))
+          (updated-lists-v1 (unwrap! (replace-at? lock-ids (- length u1) item-to-remove) ERR-OUT-OF-BOUNDS)) 
+          (updated-lists-v2 (unwrap! (replace-at? updated-lists-v1 index last-item) ERR-OUT-OF-BOUNDS)) 
+        )
+        (map-set users-token-locks {user-addr: user-addr, pool-id: pool-id} (unwrap! (as-max-len? (unwrap-panic (slice? updated-lists-v2 u0 (- length u1))) u200) ERR-FAILED))
+
+        (try! (add-lock-id lock-id pool-id user-addr))
     )
     (ok true)
   )
@@ -126,7 +142,7 @@
         (token-y (contract-of token-y-trait))
         (pool (try! (contract-call? 'SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.amm-swap-pool-v1-1 get-pool-details token-x token-y factor)))
         (pool-id (get pool-id pool))
-        (balance (unwrap-panic (contract-call? 'SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.token-amm-swap-pool-v1-1 get-balance-fixed (pool-id) tx-sender)))
+        (balance (unwrap-panic (contract-call? 'SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.token-amm-swap-pool-v1-1 get-balance-fixed pool-id tx-sender)))
         (stxfee (var-get stx-fee))
         (secondarytokenfee (var-get secondary-token-fee))
         (sender tx-sender)
@@ -150,7 +166,7 @@
       (as-contract (try! (contract-call? 'SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.token-amm-swap-pool-v1-1 transfer-fixed pool-id amount sender .vault)))
 
       ;; create token lock record
-      (map-set token-lock-map {lock-id: next-lock-id} { lock-block: block-height, amount: amount, initial-amount: amount, unlock-block: unlock-block, lock-owner: sender })
+      (map-set token-lock-map {lock-id: next-lock-id} { lock-block: block-height, amount: amount, initial-amount: amount, unlock-block: unlock-block, lock-owner: sender , pool-id: pool-id})
 
       ;; add lock id
       (try! (add-lock-id next-lock-id pool-id sender))
@@ -162,168 +178,202 @@
   )
 )
 
+;; relockToken
+(define-public (relock-token (token-x-trait <ft-trait>) (token-y-trait <ft-trait>) (factor uint) (index uint) (new-unlock-block uint)) 
+  (begin 
+    (asserts! (< new-unlock-block block-height) ERR-INVALID-BLOCK)
 
-;; ;; relockToken
-;; (define-public (relock-token (token-trait <ft-trait>) (token-id uint) (new-unlock-block uint)) 
-;;   (begin 
-;;     (asserts! (< new-unlock-block block-height) ERR-INVALID-BLOCK)
+    ;; check that pool exists
+    (asserts! (is-some (contract-call? 'SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.amm-swap-pool-v1-1 get-pool-exists (contract-of token-x-trait) (contract-of token-y-trait) factor)) ERR-INVALID-POOL-TOKEN)
+  
+    (let
+      (
+        (token-x (contract-of token-x-trait))
+        (token-y (contract-of token-y-trait))
+        (pool (try! (contract-call? 'SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.amm-swap-pool-v1-1 get-pool-details token-x token-y factor)))
+        (pool-id (get pool-id pool))
+        (sender tx-sender)
+        (lock-id (unwrap! (element-at (get-user-token-locks sender pool-id) index) ERR-OUT-OF-BOUNDS))
+        (token-lock (unwrap! (map-get? token-lock-map { lock-id: lock-id }) ERR-INVALID-TOKEN-LOCK))
+        (token-lock-updated (merge token-lock {
+          unlock-block: new-unlock-block
+        }))
+      )
 
-;;     (let
-;;       (
-;;         (sender tx-sender)
-;;         (user-token-lock (unwrap! (map-get? users-token-locks { user-addr: sender, token-id: token-id }) ERR-INVALID-TOKEN-ID))
-;;         (lock-id (get lock-id user-token-lock))
-;;         (token (get token-addr user-token-lock))
-;;         (token-lock (unwrap! (map-get? token-locks { token-addr: token, lock-id: lock-id }) ERR-INVALID-TOKEN-LOCK))
-;;         (token-lock-updated (merge token-lock {
-;;           unlock-block: new-unlock-block
-;;         }))
-;;       )
+      (asserts! (is-some (index-of (get-user-token-locks sender pool-id) lock-id)) ERR-OUT-OF-BOUNDS)
 
-;;       (asserts! (is-eq token (contract-of token-trait)) ERR-INVALID-TOKEN)
-;;       (asserts! (is-eq (get lock-owner token-lock) sender) ERR-LOCK_MISMATCH)
-;;       (asserts! (> new-unlock-block (get unlock-block token-lock)) ERR-INVALID-BLOCK)
+      (asserts! (is-eq (get lock-owner token-lock) sender) ERR-LOCK_MISMATCH)
 
+      (map-set token-lock-map { lock-id: lock-id } token-lock-updated)
+    )
+    (ok true)
+  )
+)
 
-;;       (map-set token-locks {token-addr: token, lock-id: lock-id} token-lock-updated)
-;;     )
+;; withdraw
+(define-public (withdraw-token (token-x-trait <ft-trait>) (token-y-trait <ft-trait>) (factor uint) (index uint) (amount uint)) 
+  (begin 
+    (asserts! (> amount u0) ERR-INVALID-AMOUNT)
 
-;;     (ok true)
-;;   )
-;; )
+    ;; check that pool exists
+    (asserts! (is-some (contract-call? 'SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.amm-swap-pool-v1-1 get-pool-exists (contract-of token-x-trait) (contract-of token-y-trait) factor)) ERR-INVALID-POOL-TOKEN)
+  
+    (let
+      (
+        (token-x (contract-of token-x-trait))
+        (token-y (contract-of token-y-trait))
+        (pool (try! (contract-call? 'SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.amm-swap-pool-v1-1 get-pool-details token-x token-y factor)))
+        (pool-id (get pool-id pool))
+        (sender tx-sender)
+        (lock-id (unwrap! (element-at (get-user-token-locks sender pool-id) index) ERR-OUT-OF-BOUNDS))
+        (token-lock (unwrap! (map-get? token-lock-map { lock-id: lock-id }) ERR-INVALID-TOKEN-LOCK))
+        (locked-balance (get amount token-lock))
+        (unlock-block (get unlock-block token-lock))
+        (token-lock-updated (merge token-lock {
+          amount: (if (<= locked-balance amount) u0 (- locked-balance amount))
+        }))
+      )
 
-;; ;; withdraw
-;; (define-public (withdraw-token (token-trait <ft-trait>) (token-id uint) (amount uint)) 
-;;   (begin 
-;;     (asserts! (> amount u0) ERR-INVALID-AMOUNT)
-;;     (let
-;;       (
-;;         (sender tx-sender)
-;;         (user-token-lock (unwrap! (map-get? users-token-locks { user-addr: sender, token-id: token-id }) ERR-INVALID-TOKEN-ID))
-;;         (lock-id (get lock-id user-token-lock))
-;;         (token (get token-addr user-token-lock))
-;;         (token-lock (unwrap! (map-get? token-locks { token-addr: token, lock-id: lock-id }) ERR-INVALID-TOKEN-LOCK))
-;;         (balance-amount (get amount token-lock))
-;;         (unlock-block (get unlock-block token-lock))
-;;         (token-lock-updated (merge token-lock {
-;;           amount: (if (<= balance-amount amount) u0 (- balance-amount amount))
-;;         }))
-;;       )
+      (asserts! (>= block-height unlock-block) ERR-INVALID-BLOCK)
+      (asserts! (is-eq (get lock-owner token-lock) sender) ERR-LOCK_MISMATCH)
+      (asserts! (>= amount locked-balance) ERR-INVALID-AMOUNT)  
 
-;;       (asserts! (>= block-height unlock-block) ERR-INVALID-BLOCK)
-;;       (asserts! (is-eq token (contract-of token-trait)) ERR-INVALID-TOKEN)
-;;       (asserts! (is-eq (get lock-owner token-lock) sender) ERR-LOCK_MISMATCH)
-;;       (asserts! (<= amount balance-amount) ERR-INVALID-AMOUNT)  
+      (asserts! (is-some (index-of (get-user-token-locks sender pool-id) lock-id)) ERR-OUT-OF-BOUNDS)
 
-;;       (as-contract (try! (contract-call? .vault transfer-ft token-trait amount sender)))
+      ;; transfer token to vault
+      (as-contract (try! (contract-call? 'SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.token-amm-swap-pool-v1-1 transfer-fixed pool-id amount sender .vault))) 
 
-;;       (map-set token-locks {token-addr: token, lock-id: lock-id} token-lock-updated)
-;;     )
-;;     (ok true)
-;;   )
-;; )
+      (map-set token-lock-map { lock-id: lock-id} token-lock-updated)
+    )
+    (ok true)
+  )
+)
 
-;; ;; incrementlock
-;; (define-public (increment-lock (token-trait <ft-trait>) (token-id uint) (amount uint)) 
-;;   (begin 
-;;     (let
-;;       (
-;;         (sender tx-sender)
-;;         (user-token-lock (unwrap! (map-get? users-token-locks { user-addr: sender, token-id: token-id }) ERR-INVALID-TOKEN-ID))
-;;         (lock-id (get lock-id user-token-lock))
-;;         (token (get token-addr user-token-lock))
-;;         (token-lock (unwrap! (map-get? token-locks { token-addr: token, lock-id: lock-id }) ERR-INVALID-TOKEN-LOCK))
-;;         (balance-amount (get amount token-lock))
-;;         (unlock-block (get unlock-block token-lock))
-;;         (token-lock-updated (merge token-lock {
-;;           amount: (+ balance-amount amount)
-;;         }))
-;;       )
+;; incrementlock
+(define-public (increment-lock (token-x-trait <ft-trait>) (token-y-trait <ft-trait>) (factor uint) (index uint) (amount uint)) 
+  (begin 
+    (asserts! (> amount u0) ERR-INVALID-AMOUNT)
 
-;;       (asserts! (is-eq token (contract-of token-trait)) ERR-INVALID-TOKEN)
-;;       (asserts! (is-eq (get lock-owner token-lock) sender) ERR-LOCK_MISMATCH)
-;;       (asserts! (> unlock-block block-height ) ERR-INVALID-BLOCK)
-;;       (asserts! (<= amount balance-amount) ERR-INVALID-AMOUNT)  
+    ;; check that pool exists
+    (asserts! (is-some (contract-call? 'SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.amm-swap-pool-v1-1 get-pool-exists (contract-of token-x-trait) (contract-of token-y-trait) factor)) ERR-INVALID-POOL-TOKEN)
 
-;;        ;; transfer token to vault
-;;       (unwrap! (contract-call? token-trait transfer-fixed amount sender .vault none) ERR-TRANSFER-FAILED)
+    (let
+      (
+        (token-x (contract-of token-x-trait))
+        (token-y (contract-of token-y-trait))
+        (pool (try! (contract-call? 'SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.amm-swap-pool-v1-1 get-pool-details token-x token-y factor)))
+        (pool-id (get pool-id pool))
+        (token-balance (unwrap-panic (contract-call? 'SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.token-amm-swap-pool-v1-1 get-balance-fixed pool-id tx-sender)))
+        (sender tx-sender)
+        (lock-id (unwrap! (element-at (get-user-token-locks sender pool-id) index) ERR-OUT-OF-BOUNDS))
+        (token-lock (unwrap! (map-get? token-lock-map { lock-id: lock-id }) ERR-INVALID-TOKEN-LOCK))
+        (locked-balance (get amount token-lock))
+        (token-lock-updated (merge token-lock {
+          amount: (+ locked-balance amount)
+        }))
+      )
 
-;;       (map-set token-locks {token-addr: token, lock-id: lock-id} token-lock-updated)
-;;     )
-;;     (ok true)
-;;   )
-;; )
+      ;; check that caller is owner
+      (asserts! (is-eq (get lock-owner token-lock) sender) ERR-LOCK_MISMATCH)
 
-;; ;; splitlock
-;; (define-public (split-lock (token-trait <ft-trait>) (token-id uint) (amount uint)) 
-;;   (begin 
-;;     (let
-;;       (
-;;         (sender tx-sender)
-;;         (user-token-lock (unwrap! (map-get? users-token-locks { user-addr: sender, token-id: token-id }) ERR-INVALID-TOKEN-ID))
-;;         (lock-id (get lock-id user-token-lock))
-;;         (token (get token-addr user-token-lock))
-;;         (token-lock (unwrap! (map-get? token-locks { token-addr: token, lock-id: lock-id }) ERR-INVALID-TOKEN-LOCK))
-;;         (balance-amount (get amount token-lock))
-;;         (unlock-block (get unlock-block token-lock))
-;;         (lock-block (get lock-block token-lock))
-;;         (token-lock-updated (merge token-lock {
-;;           amount: (if (<= balance-amount amount) u0 (- balance-amount amount))
-;;         }))
-;;         (next-token-id (default-to u0 (map-get? locked-tokens-count { token-addr: (contract-of token-trait) })))
-;;         (next-user-token-lock-id (default-to u0 (map-get? user-locked-tokens-count { user-addr: sender })))
-;;       )
+      ;; check that user has enought balcne
+      (asserts! (<= amount token-balance) ERR-INSUFFICIENT_BALANCE)
 
-;;       (asserts! (is-eq token (contract-of token-trait)) ERR-INVALID-TOKEN)
-;;       (asserts! (is-eq (get lock-owner token-lock) sender) ERR-LOCK_MISMATCH)
-;;       (asserts! (> unlock-block block-height ) ERR-INVALID-BLOCK)
-;;       (asserts! (<= amount balance-amount) ERR-INVALID-AMOUNT)  
+      (asserts! (is-some (index-of (get-user-token-locks sender pool-id) lock-id)) ERR-OUT-OF-BOUNDS)
 
-;;       (map-set token-locks {token-addr: token, lock-id: lock-id} token-lock-updated)
+      ;; transfer token to vault
+      (as-contract (try! (contract-call? 'SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.token-amm-swap-pool-v1-1 transfer-fixed pool-id amount sender .vault)))
 
-;;       ;; create new token lock record
-;;       (map-set token-locks { token-addr: token, lock-id: next-token-id } { lock-block: lock-block, amount: amount, initial-amount: amount, unlock-block: unlock-block, lock-owner: sender })
-;;       (map-set locked-tokens-count { token-addr: token } (+ next-token-id u1))
+      (map-set token-lock-map { lock-id: lock-id} token-lock-updated)
+    )
+    (ok true)
+  )
+)
 
-;;       ;; create new user token lock record
-;;       (map-set users-token-locks { user-addr: sender, token-id: next-user-token-lock-id } { token-addr: token, lock-id: next-token-id })
-;;       (map-set user-locked-tokens-count { user-addr: sender } (+ next-user-token-lock-id u1) )
+;; splitlock
+(define-public (split-lock (token-x-trait <ft-trait>) (token-y-trait <ft-trait>) (factor uint) (index uint) (amount uint)) 
+  (begin 
+      (asserts! (> amount u0) ERR-INVALID-AMOUNT)
 
-;;     )
-;;     (ok true)
-;;   )
-;; )
+      ;; check that pool exists
+      (asserts! (is-some (contract-call? 'SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.amm-swap-pool-v1-1 get-pool-exists (contract-of token-x-trait) (contract-of token-y-trait) factor)) ERR-INVALID-POOL-TOKEN)
+  
+    (let
+      (
+        (token-x (contract-of token-x-trait))
+        (token-y (contract-of token-y-trait))
+        (pool (try! (contract-call? 'SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.amm-swap-pool-v1-1 get-pool-details token-x token-y factor)))
+        (pool-id (get pool-id pool))
+        (token-balance (unwrap-panic (contract-call? 'SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.token-amm-swap-pool-v1-1 get-balance-fixed pool-id tx-sender)))
+        (sender tx-sender)
+        (lock-id (unwrap! (element-at (get-user-token-locks sender pool-id) index) ERR-OUT-OF-BOUNDS))
+        (token-lock (unwrap! (map-get? token-lock-map { lock-id: lock-id }) ERR-INVALID-TOKEN-LOCK))
+        (locked-balance (get amount token-lock))
+        (unlock-block (get unlock-block token-lock))
+        (lock-block (get lock-block token-lock))
+        (token-lock-updated (merge token-lock {
+          amount: (if (<= locked-balance amount) u0 (- locked-balance amount))
+        }))
+        (next-lock-id (var-get lock-nonce))
+      )
 
-;; ;; transferlockownership
-;; (define-public (transfer-lock-ownership (token-trait <ft-trait>) (token-id uint) (new-owner principal)) 
-;;   (begin
-;;     (let
-;;       (
-;;         (sender tx-sender)
-;;         (user-token-lock (unwrap! (map-get? users-token-locks { user-addr: sender, token-id: token-id }) ERR-INVALID-TOKEN-ID))
-;;         (lock-id (get lock-id user-token-lock))
-;;         (token (get token-addr user-token-lock))
-;;         (token-lock (unwrap! (map-get? token-locks { token-addr: token, lock-id: lock-id }) ERR-INVALID-TOKEN-LOCK))
-;;         (next-user-token-lock-id (default-to u0 (map-get? user-locked-tokens-count { user-addr: sender })))
-;;         (token-lock-updated (merge token-lock {
-;;           lock-owner: new-owner
-;;         }))
-;;       )
-;;       (asserts! (is-eq token (contract-of token-trait)) ERR-INVALID-TOKEN)
-;;       (asserts! (is-eq (get lock-owner token-lock) sender) ERR-LOCK_MISMATCH)
+      (asserts! (is-eq (get lock-owner token-lock) sender) ERR-LOCK_MISMATCH)
+      (asserts! (<= amount locked-balance) ERR-INVALID-AMOUNT)  
 
-;;       (map-set token-locks {token-addr: token, lock-id: lock-id} token-lock-updated)
+      (asserts! (is-some (index-of (get-user-token-locks sender pool-id) lock-id)) ERR-OUT-OF-BOUNDS)
 
-;;       ;; create new user token lock record
-;;       (map-set users-token-locks { user-addr: sender, token-id: next-user-token-lock-id } { token-addr: token, lock-id: lock-id })
-;;       (map-set user-locked-tokens-count { user-addr: sender } (+ next-user-token-lock-id u1) )
+      (map-set token-lock-map {lock-id: lock-id} token-lock-updated)
 
-;;       ;; delete previous user record
-;;       (map-delete users-token-locks {user-addr: sender, token-id: lock-id})
-;;     )
-;;     (ok true)
-;;   )
-;; )
+      ;; create new token lock record
+      (map-set token-lock-map {lock-id: next-lock-id} { lock-block: block-height, amount: amount, initial-amount: amount, unlock-block: unlock-block, lock-owner: sender , pool-id: pool-id})
+
+      ;; add lock id
+      (try! (add-lock-id next-lock-id pool-id sender))
+
+      ;; update lock nonce
+      (var-set lock-nonce (+ next-lock-id u1))
+    )
+    (ok true)
+  )
+)
+
+;; transferlockownership
+(define-public (transfer-lock-ownership (token-x-trait <ft-trait>) (token-y-trait <ft-trait>) (factor uint) (index uint) (new-owner principal)) 
+  (begin
+      
+    ;; check that pool exists
+    (asserts! (is-some (contract-call? 'SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.amm-swap-pool-v1-1 get-pool-exists (contract-of token-x-trait) (contract-of token-y-trait) factor)) ERR-INVALID-POOL-TOKEN)
+
+    (let
+      (
+        (token-x (contract-of token-x-trait))
+        (token-y (contract-of token-y-trait))
+        (pool (try! (contract-call? 'SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.amm-swap-pool-v1-1 get-pool-details token-x token-y factor)))
+        (pool-id (get pool-id pool))
+        (token-balance (unwrap-panic (contract-call? 'SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.token-amm-swap-pool-v1-1 get-balance-fixed pool-id tx-sender)))
+        (sender tx-sender)
+        (lock-id (unwrap! (element-at (get-user-token-locks sender pool-id) index) ERR-OUT-OF-BOUNDS))
+        (token-lock (unwrap! (map-get? token-lock-map { lock-id: lock-id }) ERR-INVALID-TOKEN-LOCK))
+        
+        (token-lock-updated (merge token-lock {
+          lock-owner: new-owner
+        }))
+      )
+
+      (asserts! (is-eq (get lock-owner token-lock) sender) ERR-LOCK_MISMATCH)
+
+      (asserts! (is-some (index-of (get-user-token-locks sender pool-id) lock-id)) ERR-OUT-OF-BOUNDS)
+
+      (map-set token-lock-map {lock-id: lock-id} token-lock-updated)
+
+      ;; add lock id
+      (try! (add-lock-id lock-id pool-id new-owner))
+
+      (try! (remove-lock-id index lock-id pool-id sender))
+    )
+    (ok true)
+  )
+)
 
 ;; TODOs
 ;; add fees calculations

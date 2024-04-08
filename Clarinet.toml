@@ -1,60 +1,55 @@
-
 [project]
-name = "liquidity-locker"
-description = ""
+name = 'liquidity-locker'
+description = ''
 authors = []
 telemetry = true
-cache_dir = "./.cache"
+cache_dir = './.cache'
 
 [[project.requirements]]
 contract_id = 'SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.amm-swap-pool-v1-1'
+
 [[project.requirements]]
 contract_id = 'SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.token-amm-swap-pool-v1-1'
 
-
 [contracts.locker]
-path = "contracts/locker.clar"
-depends_on = [
-    "vault",
-    "trait-sip-010",
-    "trait-vault",
-    "trait-ownable"
-]
-
-[contracts.vault]
-path = "contracts/vault.clar"
-depends_on = [
-  "trait-vault",
-  "trait-sip-010",
-  "trait-ownable",
-  "trait-semi-fungible"
-]
-
-[contracts.trait-sip-010]
-path = "contracts/traits/trait-sip-010.clar"
-depends_on = []
+path = 'contracts/locker.clar'
+clarity_version = 2
+epoch = 2.4
 
 [contracts.trait-ownable]
-path = "contracts/traits/trait-ownable.clar"
-depends_on = []
+path = 'contracts/traits/trait-ownable.clar'
+clarity_version = 2
+epoch = 2.4
 
 [contracts.trait-semi-fungible]
-path = "contracts/traits/trait-semi-fungible.clar"
-depends_on = []
+path = 'contracts/traits/trait-semi-fungible.clar'
+clarity_version = 2
+epoch = 2.4
+
+[contracts.trait-sip-010]
+path = 'contracts/traits/trait-sip-010.clar'
+clarity_version = 2
+epoch = 2.4
 
 [contracts.trait-vault]
-path = "contracts/traits/trait-vault.clar"
-depends_on = ["trait-sip-010"]
+path = 'contracts/traits/trait-vault.clar'
+clarity_version = 2
+epoch = 2.4
 
+[contracts.vault]
+path = 'contracts/vault.clar'
+clarity_version = 2
+epoch = 2.4
+
+[repl]
+clarity_wasm_mode = false
+show_timings = false
 
 [repl.analysis]
-passes = ["check_checker"]
-check_checker = { trusted_sender = false, trusted_caller = false, callee_filter = false }
+passes = ['check_checker']
 
-# Check-checker settings:
-# trusted_sender: if true, inputs are trusted after tx_sender has been checked.
-# trusted_caller: if true, inputs are trusted after contract-caller has been checked.
-# callee_filter: if true, untrusted data may be passed into a private function without a
-# warning, if it gets checked inside. This check will also propagate up to the
-# caller.
-# More informations: https://www.hiro.so/blog/new-safety-checks-in-clarinet
+[repl.analysis.check_checker]
+strict = false
+trusted_sender = false
+trusted_caller = false
+callee_filter = false
