@@ -5,19 +5,26 @@ authors = []
 telemetry = true
 cache_dir = './.cache'
 
-[[project.requirements]]
-contract_id = 'SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.amm-swap-pool-v1-1'
+# [[project.requirements]]
+# contract_id = 'SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.amm-swap-pool-v1-1'
 
-[[project.requirements]]
-contract_id = 'SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.token-amm-swap-pool-v1-1'
+# [[project.requirements]]
+# contract_id = 'SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.token-amm-swap-pool-v1-1'
 
-[contracts.locker]
-path = 'contracts/locker.clar'
+
+# [contracts.memegoat-locker]
+# path = 'contracts/locker.clar'
+# depends_on = [ "trait-ownable", "trait-sip-010" ]
+# clarity_version = 2
+# epoch = 2.4
+
+[contracts.goatmeme-locker]
+path = 'contracts/test-contracts/test-locker.clar'
 depends_on = [ "trait-ownable", "trait-sip-010" ]
 clarity_version = 2
 epoch = 2.4
 
-[contracts.vault]
+[contracts.memegoat-vault]
 path = 'contracts/vault.clar'
 depends_on = [ "trait-semi-fungible", "trait-sip-010" ]
 clarity_version = 2
@@ -42,8 +49,8 @@ depends_on = [ "trait-sip-010" ]
 clarity_version = 2
 epoch = 2.4
 
-[contracts.goatmeme]
-path = 'contracts/test-contracts/token/goatmeme.clar'
+[contracts.memegoat]
+path = 'contracts/test-contracts/token/memegoat.clar'
 depends_on = [ "trait-sip-010" ]
 clarity_version = 2
 epoch = 2.4

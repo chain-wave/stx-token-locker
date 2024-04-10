@@ -1,0 +1,91 @@
+---
+id: 0
+name: Devnet deployment
+network: devnet
+stacks-node: "http://localhost:20443"
+bitcoin-node: "http://devnet:devnet@localhost:18443"
+plan:
+  batches:
+    - id: 0
+      transactions:
+        - contract-publish:
+            contract-name: trait-sip-010
+            expected-sender: STHSSNNW4X73WMDB5XZV387WME91DQCNZMEK833W
+            cost: 13740
+            path: contracts/traits/trait-sip-010.clar
+            anchor-block-only: true
+            clarity-version: 1
+        - contract-publish:
+            contract-name: trait-flash-loan-user
+            expected-sender: STHSSNNW4X73WMDB5XZV387WME91DQCNZMEK833W
+            cost: 1700
+            path: contracts/test-contracts/traits/trait-flash-loan-user.clar
+            anchor-block-only: true
+            clarity-version: 1
+        - contract-publish:
+            contract-name: trait-semi-fungible
+            expected-sender: STHSSNNW4X73WMDB5XZV387WME91DQCNZMEK833W
+            cost: 16380
+            path: contracts/traits/trait-semi-fungible.clar
+            anchor-block-only: true
+            clarity-version: 1
+        - contract-publish:
+            contract-name: trait-ownable
+            expected-sender: STHSSNNW4X73WMDB5XZV387WME91DQCNZMEK833W
+            cost: 1430
+            path: contracts/traits/trait-ownable.clar
+            anchor-block-only: true
+            clarity-version: 1
+      epoch: "2.05"
+    - id: 1
+      transactions:
+        - contract-publish:
+            contract-name: alex-vault-v1-1
+            expected-sender: STHSSNNW4X73WMDB5XZV387WME91DQCNZMEK833W
+            cost: 66430
+            path: contracts/test-contracts/alex-vault-v1-1.clar
+            anchor-block-only: true
+            clarity-version: 2
+        - contract-publish:
+            contract-name: token-amm-swap-pool-v1-1
+            expected-sender: STHSSNNW4X73WMDB5XZV387WME91DQCNZMEK833W
+            cost: 138260
+            path: contracts/test-contracts/token-amm-swap-pool-v1-1.clar
+            anchor-block-only: true
+            clarity-version: 2
+        - contract-publish:
+            contract-name: amm-swap-pool-v1-1
+            expected-sender: STHSSNNW4X73WMDB5XZV387WME91DQCNZMEK833W
+            cost: 490680
+            path: contracts/test-contracts/amm-swap-pool-v1-1.clar
+            anchor-block-only: true
+            clarity-version: 2
+        - contract-publish:
+            contract-name: dummy
+            expected-sender: STHSSNNW4X73WMDB5XZV387WME91DQCNZMEK833W
+            cost: 51770
+            path: contracts/test-contracts/token/dummy.clar
+            anchor-block-only: true
+            clarity-version: 2
+        - contract-publish:
+            contract-name: memegoat-vault
+            expected-sender: STHSSNNW4X73WMDB5XZV387WME91DQCNZMEK833W
+            cost: 37370
+            path: contracts/vault.clar
+            anchor-block-only: true
+            clarity-version: 2
+        - contract-publish:
+            contract-name: goatmeme-locker
+            expected-sender: STHSSNNW4X73WMDB5XZV387WME91DQCNZMEK833W
+            cost: 150360
+            path: contracts/test-contracts/test-locker.clar
+            anchor-block-only: true
+            clarity-version: 2
+        - contract-publish:
+            contract-name: memegoat
+            expected-sender: STHSSNNW4X73WMDB5XZV387WME91DQCNZMEK833W
+            cost: 51780
+            path: contracts/test-contracts/token/memegoat.clar
+            anchor-block-only: true
+            clarity-version: 2
+      epoch: "2.4"

@@ -71,6 +71,14 @@
 
 ;; priviliged calls
 
+(define-public (withdraw-liquidity-token (pool-id uint) (amount uint) (recipient principal))
+  (begin     
+    (asserts! (not (is-paused)) ERR-PAUSED)
+    (asserts! (or (is-ok (check-is-approved)) (is-ok (check-is-owner))) ERR-NOT-AUTHORIZED)
+    (as-contract (contract-call? .token-amm-swap-pool-v1-1 transfer-fixed pool-id amount tx-sender recipient))
+  )
+)
+
 (define-public (transfer-ft (the-token <ft-trait>) (amount uint) (recipient principal))
   (begin     
     (asserts! (not (is-paused)) ERR-PAUSED)
@@ -84,23 +92,6 @@
     (asserts! (not (is-paused)) ERR-PAUSED)
     (asserts! (and (or (is-ok (check-is-approved)) (is-ok (check-is-owner))) (is-ok (check-is-approved-token (contract-of the-token)))) ERR-NOT-AUTHORIZED) 
     (as-contract (contract-call? the-token transfer-fixed token-id amount tx-sender recipient))
-  )
-)
-
-(define-public (add-to-reserve (the-token principal) (amount uint))
-  (begin
-    (asserts! (not (is-paused)) ERR-PAUSED)
-    (asserts! (or (is-ok (check-is-approved)) (is-ok (check-is-owner))) ERR-NOT-AUTHORIZED) 
-    (ok (map-set reserve the-token (+ amount (get-reserve the-token))))
-  )
-)
-
-(define-public (remove-from-reserve (the-token principal) (amount uint))
-  (begin
-    (asserts! (not (is-paused)) ERR-PAUSED)
-    (asserts! (or (is-ok (check-is-approved)) (is-ok (check-is-owner))) ERR-NOT-AUTHORIZED)
-    (asserts! (<= amount (get-reserve the-token)) ERR-AMOUNT-EXCEED-RESERVE)
-    (ok (map-set reserve the-token (- (get-reserve the-token) amount)))
   )
 )
 
