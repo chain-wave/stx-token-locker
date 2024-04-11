@@ -1,4 +1,3 @@
-(impl-trait .trait-ownable.ownable-trait)
 (use-trait ft-trait .trait-sip-010.sip-010-trait)
 
 ;; ERRS
@@ -14,13 +13,14 @@
 (define-constant ERR-NOT-AUTHORIZED (err u5009))
 (define-constant ERR-INVALID-AMOUNT (err u6001))
 (define-constant ERR-INVALID-POOL-TOKEN (err u6002))
-(define-constant ERR-FAILED (err u6003))
-(define-constant ERR-OUT-OF-BOUNDS (err u6004))
-
-;; null principal place holder
-(define-constant NULL_PRINCIPAL tx-sender)
+(define-constant ERR-INVALID-LOCK (err u6003))
+(define-constant ERR-FAILED (err u6004))
+(define-constant ERR-OUT-OF-BOUNDS (err u6005))
 
 ;; DATA MAPS AND VARS
+
+;; set caller as contract owner
+(define-data-var contract-owner principal tx-sender)
 
 ;; maps user-addr and pool-id to lock-ids
 (define-map users-token-locks
@@ -47,15 +47,20 @@
 
 ;; define the locker parameters
 (define-data-var stx-fee uint u1000000) ;; small stacks fee to prevent spams
-(define-data-var secondary-fee-token principal NULL_PRINCIPAL) ;; in this case goat-coin
-(define-data-var secondary-token-fee uint u1000) ;; option goat-coin
-(define-data-var secondary-token-discount uint u200) ;; discount on liquidity fee for burning secondary token
+(define-data-var secondary-fee-token principal .memegoat) ;; in this case memegoat
+(define-data-var secondary-token-fee uint u100000) ;; option memegoat ~ 10,000 memegoat
 
-;; MANAGEMENT FUNCTIONS
-(define-data-var contract-owner principal tx-sender)
+;; management calls
 
+(define-public (set-contract-owner (owner principal))
+  (begin
+    (try! (check-is-owner)) 
+    (ok (var-set contract-owner owner))
+  )
+)
 
 ;; read-only calls
+
 (define-read-only (get-user-token-locks (user-addr principal) (pool-id uint)) 
   (default-to (list) (map-get? users-token-locks {user-addr: user-addr, pool-id: pool-id}))
 )
@@ -65,17 +70,14 @@
   (ok (var-get contract-owner))
 )
 
-;; set contract owner only by current contract owner
-(define-public (set-contract-owner (owner principal))
-  (begin
-    (try! (check-is-owner))
-    (ok (var-set contract-owner owner))
-  )
+(define-read-only (get-token-lock-by-id (lock-id uint))
+  (ok (unwrap! (map-get? token-lock-map {lock-id: lock-id}) ERR-INVALID-LOCK))
 )
 
-;; helper function to check if caller is owner
+;; private calls
+
 (define-private (check-is-owner)
-    (ok (asserts! (is-eq tx-sender (var-get contract-owner)) ERR-NOT-AUTHORIZED))
+  (ok (asserts! (is-eq tx-sender (var-get contract-owner)) ERR-NOT-AUTHORIZED))
 )
 
 ;; set secondary fee token
@@ -90,12 +92,11 @@
 )
 
 ;; fees for locking tokens
-(define-public (set-fees (stx-fee_ uint) (secondary-token-fee_ uint) (secondary-token-discount_ uint)) 
+(define-public (set-fees (stx-fee_ uint) (secondary-token-fee_ uint)) 
   (begin 
     (try! (check-is-owner))
     (var-set stx-fee stx-fee_)
     (var-set secondary-token-fee  secondary-token-fee_)
-    (var-set secondary-token-discount secondary-token-discount_)
     (ok true)
   )
 )
@@ -163,13 +164,14 @@
 
       ;; transfer token to vault
       (try! (contract-call? .token-amm-swap-pool-v1-1 transfer-fixed pool-id amount sender .memegoat-vault))
-
+      
       ;; create token lock record
       (map-set token-lock-map {lock-id: next-lock-id} { lock-block: block-height, amount: amount, initial-amount: amount, unlock-block: unlock-block, lock-owner: sender , pool-id: pool-id, withdrawer: withdrawer})
 
       ;; add lock id
       (try! (add-lock-id next-lock-id pool-id sender))
 
+      ;; update lock nonce
       (var-set lock-nonce next-lock-id)
     )
     (ok true)  
@@ -275,7 +277,7 @@
       ;; check that caller is owner
       (asserts! (is-eq (get lock-owner token-lock) sender) ERR-LOCK_MISMATCH)
 
-      ;; check that user has enought balcne
+      ;; check that user has enought balance
       (asserts! (<= amount token-balance) ERR-INSUFFICIENT_BALANCE)
 
       (asserts! (is-some (index-of (get-user-token-locks sender pool-id) lock-id)) ERR-OUT-OF-BOUNDS)
@@ -328,7 +330,7 @@
 
       ;; add lock id
       (try! (add-lock-id next-lock-id pool-id sender))
-      
+
       (var-set lock-nonce next-lock-id)
     )
     (ok true)
@@ -375,4 +377,3 @@
 
 ;; TODOs
 ;; add fees calculations
-;; getter functions

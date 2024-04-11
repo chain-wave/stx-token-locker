@@ -1,5 +1,5 @@
 [project]
-name = 'liquidity-locker'
+name = 'memegoat-liquidity-locker'
 description = ''
 authors = []
 telemetry = true
@@ -12,15 +12,15 @@ cache_dir = './.cache'
 # contract_id = 'SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.token-amm-swap-pool-v1-1'
 
 
-# [contracts.memegoat-locker]
+# [contracts.memegoat-locker-mainnet]
 # path = 'contracts/locker.clar'
-# depends_on = [ "trait-ownable", "trait-sip-010" ]
+# depends_on = [ "trait-sip-010" ]
 # clarity_version = 2
 # epoch = 2.4
 
-[contracts.goatmeme-locker]
+[contracts.memegoat-locker]
 path = 'contracts/test-contracts/test-locker.clar'
-depends_on = [ "trait-ownable", "trait-sip-010" ]
+depends_on = [ "trait-sip-010" ]
 clarity_version = 2
 epoch = 2.4
 

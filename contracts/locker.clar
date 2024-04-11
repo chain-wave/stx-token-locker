@@ -1,4 +1,3 @@
-(impl-trait .trait-ownable.ownable-trait)
 (use-trait ft-trait .trait-sip-010.sip-010-trait)
 
 ;; ERRS
@@ -14,13 +13,14 @@
 (define-constant ERR-NOT-AUTHORIZED (err u5009))
 (define-constant ERR-INVALID-AMOUNT (err u6001))
 (define-constant ERR-INVALID-POOL-TOKEN (err u6002))
-(define-constant ERR-FAILED (err u6003))
-(define-constant ERR-OUT-OF-BOUNDS (err u6004))
-
-;; null principal place holder
-(define-constant NULL_PRINCIPAL tx-sender)
+(define-constant ERR-INVALID-LOCK (err u6003))
+(define-constant ERR-FAILED (err u6004))
+(define-constant ERR-OUT-OF-BOUNDS (err u6005))
 
 ;; DATA MAPS AND VARS
+
+;; set caller as contract owner
+(define-data-var contract-owner principal tx-sender)
 
 ;; maps user-addr and pool-id to lock-ids
 (define-map users-token-locks
@@ -47,34 +47,36 @@
 
 ;; define the locker parameters
 (define-data-var stx-fee uint u1000000) ;; small stacks fee to prevent spams
-(define-data-var secondary-fee-token principal NULL_PRINCIPAL) ;; in this case goat-coin
-(define-data-var secondary-token-fee uint u100000) ;; option goat-coin ~ 10,000 goat-coin
+(define-data-var secondary-fee-token principal .memegoat) ;; in this case memegoat
+(define-data-var secondary-token-fee uint u100000) ;; option memegoat ~ 10,000 memegoat
 
-;; MANAGEMENT FUNCTIONS
-(define-data-var contract-owner principal tx-sender)
+;; management calls
 
-
-;; read-only calls
-(define-read-only (get-user-token-locks (user-addr principal) (pool-id uint)) 
-  (default-to (list) (map-get? users-token-locks {user-addr: user-addr, pool-id: pool-id}))
-)
-
-;; returns the contract owner
-(define-read-only (get-contract-owner)
-  (ok (var-get contract-owner))
-)
-
-;; set contract owner only by current contract owner
 (define-public (set-contract-owner (owner principal))
   (begin
-    (try! (check-is-owner))
+    (try! (check-is-owner)) 
     (ok (var-set contract-owner owner))
   )
 )
 
-;; helper function to check if caller is owner
+;; read-only calls
+
+(define-read-only (get-user-token-locks (user-addr principal) (pool-id uint)) 
+  (default-to (list) (map-get? users-token-locks {user-addr: user-addr, pool-id: pool-id}))
+)
+
+(define-read-only (get-contract-owner)
+  (ok (var-get contract-owner))
+)
+
+(define-read-only (get-token-lock-by-id (lock-id uint))
+  (ok (unwrap! (map-get? token-lock-map {lock-id: lock-id}) ERR-INVALID-LOCK))
+)
+
+;; private calls
+
 (define-private (check-is-owner)
-    (ok (asserts! (is-eq tx-sender (var-get contract-owner)) ERR-NOT-AUTHORIZED))
+  (ok (asserts! (is-eq tx-sender (var-get contract-owner)) ERR-NOT-AUTHORIZED))
 )
 
 ;; set secondary fee token
@@ -372,7 +374,3 @@
     (ok true)
   )
 )
-
-;; TODOs
-;; add fees calculations
-;; getter functions
